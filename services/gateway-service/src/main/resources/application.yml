@@ -1,0 +1,80 @@
+# application.yml — gateway-service
+# Spring Cloud Gateway: single entry point for all frontend traffic.
+#
+# Route resolution order (first match wins):
+#   1. /auth/**           -> auth-service        (port ${AUTH_PORT:8081})
+#   2. /applications/**   -> application-service (port ${APP_PORT:8082})
+#   3. /notifications/**  -> notification-service (port ${NOTIF_PORT:8083})
+#
+# CORS is configured at the gateway level so downstream services do not need
+# their own CORS configuration. Adjust allowed-origins for production.
+
+server:
+  port: ${GATEWAY_PORT:8080}
+
+spring:
+  application:
+    name: gateway-service
+
+  cloud:
+    gateway:
+      # ---------------------------------------------------------------------------
+      # Global CORS configuration
+      # allowed-origins: localhost:5173 is the Vite dev server default.
+      # For production, replace with the actual frontend origin.
+      # ---------------------------------------------------------------------------
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowed-origins:
+              - "http://localhost:5173"
+            allowed-methods:
+              - GET
+              - POST
+              - PUT
+              - PATCH
+              - DELETE
+              - OPTIONS
+            allowed-headers:
+              - "*"
+            allow-credentials: true
+            max-age: 3600
+
+      # ---------------------------------------------------------------------------
+      # Route definitions
+      # StripPrefix=0 preserves the full path (e.g. /auth/login stays /auth/login).
+      # Downstream services own their own path prefix handling.
+      # ---------------------------------------------------------------------------
+      routes:
+        - id: auth-service
+          uri: http://localhost:${AUTH_PORT:8081}
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=0
+
+        - id: application-service
+          uri: http://localhost:${APP_PORT:8082}
+          predicates:
+            - Path=/applications/**
+          filters:
+            - StripPrefix=0
+
+        - id: notification-service
+          uri: http://localhost:${NOTIF_PORT:8083}
+          predicates:
+            - Path=/notifications/**
+          filters:
+            - StripPrefix=0
+
+# ---------------------------------------------------------------------------
+# Actuator — expose health endpoint for load balancer / readiness probe
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always

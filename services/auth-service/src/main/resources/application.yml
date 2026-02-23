@@ -1,0 +1,75 @@
+# application.yml — auth-service
+# Handles user registration, login, and JWT issuance.
+# Database: auth_db (MySQL)
+# No Redis or RabbitMQ dependency — auth is synchronous only.
+
+server:
+  port: ${AUTH_PORT:8081}
+
+spring:
+  application:
+    name: auth-service
+
+  # ---------------------------------------------------------------------------
+  # DataSource — auth_db
+  # Local:      AUTH_DB_URL points to the "mysql" Docker service on app-net.
+  # Production: AUTH_DB_URL points to the RDS endpoint with SSL params appended.
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: ${AUTH_DB_URL}
+    username: ${AUTH_DB_USERNAME}
+    password: ${AUTH_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      # Local default; increase to 20-50 on RDS depending on instance size.
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000    # 30 seconds
+      idle-timeout: 600000         # 10 minutes
+      max-lifetime: 1800000        # 30 minutes
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate
+  # ddl-auto: validate — Hibernate validates schema against entities on startup.
+  # Flyway owns DDL; Hibernate must never create or alter tables.
+  # ---------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: false
+    show-sql: false
+    open-in-view: false
+
+  # ---------------------------------------------------------------------------
+  # Flyway — applies V1__init.sql and any future migrations to auth_db.
+  # baseline-on-migrate: true allows Flyway to run against a pre-existing schema
+  # (safe for first-run against a DB that already has tables from manual setup).
+  # ---------------------------------------------------------------------------
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+# ---------------------------------------------------------------------------
+# JWT configuration
+# jwt.expiration-ms: 86400000 = 24 hours.
+# Adjust for shorter-lived tokens in production (e.g. 3600000 = 1 hour).
+# ---------------------------------------------------------------------------
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: 86400000
+
+# ---------------------------------------------------------------------------
+# Actuator
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always

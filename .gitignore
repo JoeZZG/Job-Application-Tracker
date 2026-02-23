@@ -1,0 +1,18 @@
+# Environment — never commit secrets
+infra/.env
+
+# Maven
+**/target/
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store

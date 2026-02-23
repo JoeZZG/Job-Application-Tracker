@@ -1,0 +1,114 @@
+# application.yml — application-service
+# Core CRUD service for job applications and resume targeting notes.
+# Dependencies: MySQL (application_db), Redis (dashboard cache), RabbitMQ (deadline events).
+
+server:
+  port: ${APP_PORT:8082}
+
+spring:
+  application:
+    name: application-service
+
+  # ---------------------------------------------------------------------------
+  # DataSource — application_db
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: ${APP_DB_URL}
+    username: ${APP_DB_USERNAME}
+    password: ${APP_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate
+  # ---------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: false
+    show-sql: false
+    open-in-view: false
+
+  # ---------------------------------------------------------------------------
+  # Flyway
+  # ---------------------------------------------------------------------------
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # ---------------------------------------------------------------------------
+  # Redis — dashboard summary cache
+  # Key pattern : app:dashboard:{userId}
+  # TTL         : REDIS_DASHBOARD_TTL_MINUTES (default 5)
+  # The cache type "redis" activates Spring's RedisCacheManager.
+  # ---------------------------------------------------------------------------
+  cache:
+    type: redis
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # password: ${REDIS_PASSWORD:}   # uncomment if Redis AUTH is enabled
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ — publishes deadline event messages
+  # Exchange : applications.topic
+  # Routing  : applications.application.deadline
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER}
+    password: ${RABBITMQ_DEFAULT_PASS}
+    virtual-host: /
+    listener:
+      simple:
+        # application-service is a publisher only; prefetch kept minimal for
+        # any internal admin listeners.
+        prefetch: 1
+
+# ---------------------------------------------------------------------------
+# JWT — used to validate tokens forwarded from the gateway
+# ---------------------------------------------------------------------------
+jwt:
+  secret: ${JWT_SECRET}
+
+# ---------------------------------------------------------------------------
+# Application-specific config
+# app.redis.dashboard-ttl-minutes drives the CacheManager TTL configuration.
+# ---------------------------------------------------------------------------
+app:
+  redis:
+    dashboard-ttl-minutes: ${REDIS_DASHBOARD_TTL_MINUTES:5}
+  rabbitmq:
+    exchange: applications.topic
+    routing-key:
+      deadline: applications.application.deadline
+
+# ---------------------------------------------------------------------------
+# Actuator
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always

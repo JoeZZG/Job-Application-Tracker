@@ -1,0 +1,125 @@
+# docker-compose.yml — Job Application Tracker infrastructure
+# Docker Compose version 3.8
+#
+# Startup order (enforced via depends_on + healthchecks):
+#   1. mysql       — relational persistence for auth_db, application_db, notification_db
+#   2. redis       — session/dashboard cache for application-service
+#   3. rabbitmq    — async messaging between application-service and notification-service
+#
+# Application services (gateway, auth, application, notification) are started
+# separately via their own Spring Boot processes or a future compose extension.
+# Ports labelled "[local dev only]" are exposed solely for direct inspection;
+# inter-service traffic travels over app-net using container service names.
+
+version: '3.8'
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # MySQL 8.0
+  # Hosts three logical databases: auth_db, application_db, notification_db.
+  # The init.sql script creates all three schemas on first boot.
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: jat_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      # MYSQL_DATABASE is intentionally omitted here because init.sql
+      # handles all three database creations explicitly.
+    ports:
+      - "${MYSQL_HOST_PORT:-3306}:3306"  # [local dev only] direct DB access
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h", "localhost",
+          "-u", "root",
+          "-p${MYSQL_ROOT_PASSWORD}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 (Alpine)
+  # Provides dashboard summary cache for application-service.
+  # Key namespace: app:dashboard:{userId}  TTL: REDIS_DASHBOARD_TTL_MINUTES
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: jat_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"  # [local dev only]
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ 3 with Management Plugin
+  # Topology:
+  #   Exchange : applications.topic  (topic, durable)
+  #   Queue    : notification.applications.deadline        (durable)
+  #   DLQ      : notification.applications.deadline.dlq   (durable)
+  #   Routing  : applications.application.deadline
+  # Management UI available at http://localhost:15672 [local dev only]
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: jat_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"      # AMQP protocol
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"    # [local dev only] management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+# -----------------------------------------------------------------------------
+# Named volumes — data persists across container restarts and recreations.
+# To fully reset state: docker compose down -v
+# -----------------------------------------------------------------------------
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Shared network — all services communicate by container/service name.
+# Application services must also attach to this network when added.
+# -----------------------------------------------------------------------------
+networks:
+  app-net:
+    driver: bridge

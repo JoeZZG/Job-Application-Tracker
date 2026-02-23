@@ -1,0 +1,109 @@
+# application.yml — notification-service
+# Consumes deadline events from RabbitMQ and persists notifications to notification_db.
+# Dependencies: MySQL (notification_db), RabbitMQ (deadline queue consumer).
+# No Redis dependency — notifications are read directly from the DB.
+
+server:
+  port: ${NOTIF_PORT:8083}
+
+spring:
+  application:
+    name: notification-service
+
+  # ---------------------------------------------------------------------------
+  # DataSource — notification_db
+  # ---------------------------------------------------------------------------
+  datasource:
+    url: ${NOTIF_DB_URL}
+    username: ${NOTIF_DB_USERNAME}
+    password: ${NOTIF_DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ---------------------------------------------------------------------------
+  # JPA / Hibernate
+  # ---------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        format_sql: false
+    show-sql: false
+    open-in-view: false
+
+  # ---------------------------------------------------------------------------
+  # Flyway
+  # ---------------------------------------------------------------------------
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # ---------------------------------------------------------------------------
+  # RabbitMQ — consumes from notification.applications.deadline queue
+  # Dead-letter queue: notification.applications.deadline.dlq
+  #
+  # Retry policy:
+  #   max-attempts: 3 — total delivery attempts before routing to DLQ
+  #   initial-interval: 1000ms — wait before first retry
+  #   multiplier: 2.0 — exponential backoff (1s → 2s → 4s)
+  #   max-interval: 10000ms — cap on backoff delay
+  #
+  # prefetch: 10 — notification-service is I/O-light; 10 gives throughput
+  #   without overwhelming a single pod. Tune down if DB write latency is high.
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_DEFAULT_USER}
+    password: ${RABBITMQ_DEFAULT_PASS}
+    virtual-host: /
+    listener:
+      simple:
+        prefetch: 10
+        acknowledge-mode: auto
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 10000ms
+
+# ---------------------------------------------------------------------------
+# JWT — validates tokens on REST endpoints (e.g. GET /notifications)
+# ---------------------------------------------------------------------------
+jwt:
+  secret: ${JWT_SECRET}
+
+# ---------------------------------------------------------------------------
+# Application-specific RabbitMQ topology config
+# Declared here so the topology-setup @Configuration bean can read them
+# without hardcoding exchange/queue/routing-key names.
+# ---------------------------------------------------------------------------
+app:
+  rabbitmq:
+    exchange: applications.topic
+    queue:
+      deadline: notification.applications.deadline
+      deadline-dlq: notification.applications.deadline.dlq
+    routing-key:
+      deadline: applications.application.deadline
+
+# ---------------------------------------------------------------------------
+# Actuator
+# ---------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+  endpoint:
+    health:
+      show-details: always
