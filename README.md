@@ -10,7 +10,7 @@ A full-stack microservices application for tracking job applications, managing r
 - Attach resume-targeting notes to any application: must-have keywords, nice-to-have keywords, custom bullet ideas, job description excerpt, and match notes
 - Dashboard summary: total applications, counts by status, and upcoming deadlines — cached in Redis
 - Async deadline reminders: Application Service publishes an event to RabbitMQ; Notification Service consumes it and persists a notification
-- JWT-based authentication with a single shared secret across all services; all tokens issued and validated by Auth Service
+- JWT-based authentication: tokens issued by Auth Service, validated independently by each downstream service using a shared secret
 
 ---
 
@@ -56,7 +56,7 @@ All synchronous traffic flows through the gateway via REST. Async communication 
 | Persistence    | MySQL 8.0, Spring Data JPA, Flyway (schema migrations)                      |
 | Cache          | Redis 7 (Application Service only — dashboard summary)                      |
 | Messaging      | RabbitMQ 3 with `Jackson2JsonMessageConverter`; dead-letter queue on every consumer |
-| Infrastructure | Docker Compose (local), AWS RDS + ElastiCache (cloud target)                |
+| Infrastructure | Docker Compose (local), AWS RDS MySQL (cloud database)                      |
 | Testing        | JUnit 5, Spring Boot Test, Spring Security Test                             |
 
 ---
@@ -273,4 +273,4 @@ Job-Application-Tracker/
 
 - The gateway routes to `localhost` addresses for downstream services. This is a local-development configuration. A production deployment would replace these with internal DNS names or a service registry.
 - No Docker Compose definition exists yet for the Spring Boot services themselves. They are started manually via `mvn spring-boot:run`.
-- There is no production deployment pipeline in this repository. The AWS infrastructure (RDS, ElastiCache) is referenced in `.env.example` comments as the cloud target but is not provisioned by any included script.
+- There is no production deployment pipeline in this repository. AWS RDS is used for MySQL; Redis and RabbitMQ run locally via Docker Compose and are not provisioned on AWS.
