@@ -10,6 +10,7 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,7 +52,7 @@ public class DashboardService {
                         app.getId(),
                         app.getCompany(),
                         app.getJobTitle(),
-                        app.getDeadline()))
+                        app.getDeadline() != null ? app.getDeadline().format(DateTimeFormatter.ISO_LOCAL_DATE) : null))
                 .toList();
 
         // 5 most recently updated applications.
@@ -63,7 +64,7 @@ public class DashboardService {
                         app.getCompany(),
                         app.getJobTitle(),
                         app.getStatus().name(),
-                        app.getUpdatedAt()))
+                        app.getUpdatedAt() != null ? app.getUpdatedAt().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) : null))
                 .toList();
 
         return new DashboardSummaryResponse(total, byStatus, upcomingDeadlines, recentlyUpdated);

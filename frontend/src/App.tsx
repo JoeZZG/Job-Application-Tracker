@@ -23,7 +23,7 @@ export default function App() {
           <Route path="/applications/new" element={<ApplicationFormPage />} />
           <Route path="/applications/:id" element={<ApplicationDetailPage />} />
           <Route path="/applications/:id/edit" element={<ApplicationFormPage />} />
-          <Route path="/applications/:id/targeting" element={<TargetingNotePage />} />
+          <Route path="/applications/:id/targeting-note" element={<TargetingNotePage />} />
           <Route path="/notifications" element={<NotificationsPage />} />
         </Route>
       </Route>

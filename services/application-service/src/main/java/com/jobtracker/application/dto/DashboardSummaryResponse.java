@@ -1,7 +1,5 @@
 package com.jobtracker.application.dto;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -16,7 +14,7 @@ public record DashboardSummaryResponse(
             Long id,
             String company,
             String jobTitle,
-            LocalDate deadline
+            String deadline
     ) {}
 
     public record RecentItem(
@@ -24,6 +22,6 @@ public record DashboardSummaryResponse(
             String company,
             String jobTitle,
             String status,
-            LocalDateTime updatedAt
+            String updatedAt
     ) {}
 }

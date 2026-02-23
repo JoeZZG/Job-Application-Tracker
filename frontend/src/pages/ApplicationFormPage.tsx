@@ -20,6 +20,10 @@ const schema = z.object({
   jobPostUrl: z
     .string()
     .optional()
+    .transform((val) => {
+      if (!val || val === '') return val
+      return /^https?:\/\//i.test(val) ? val : `https://${val}`
+    })
     .refine(
       (val) => !val || val === '' || z.string().url().safeParse(val).success,
       { message: 'Must be a valid URL' }
