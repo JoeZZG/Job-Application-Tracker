@@ -42,7 +42,7 @@ export default function AppLayout() {
     refetchInterval: 30_000,
   })
 
-  const unreadCount = notifications?.filter((n) => !n.isRead).length ?? 0
+  const unreadCount = Array.isArray(notifications) ? notifications.filter((n) => !n.isRead).length : 0
 
   function handleLogout() {
     logout()
