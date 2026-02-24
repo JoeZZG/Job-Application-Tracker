@@ -1,0 +1,251 @@
+# docker-compose.full.yml — Job Application Tracker full-stack
+#
+# Runs ALL services (infra + Spring Boot applications) as containers.
+# Mirrors the AWS ECS topology for local integration testing.
+#
+# Prerequisites:
+#   1. Copy infra/.env.example → infra/.env and fill values.
+#   2. Build all service images first:
+#        docker compose -f infra/docker-compose.full.yml build
+#   3. Start everything:
+#        docker compose -f infra/docker-compose.full.yml up
+#
+# Startup order (enforced via depends_on + healthchecks):
+#   mysql / redis / rabbitmq  →  auth + application + notification  →  gateway
+#
+# Service URLs (from host machine):
+#   API Gateway  : http://localhost:8080
+#   Auth Service : http://localhost:8081  (internal; exposed for debugging)
+#   App Service  : http://localhost:8082  (internal; exposed for debugging)
+#   Notif Service: http://localhost:8083  (internal; exposed for debugging)
+#   RabbitMQ UI  : http://localhost:15672
+#   MySQL        : localhost:3306
+
+version: '3.8'
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure — MySQL 8
+  # ---------------------------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: jat_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure — Redis 7
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: jat_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Infrastructure — RabbitMQ 3 with Management
+  # ---------------------------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: jat_rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # auth-service
+  # ---------------------------------------------------------------------------
+  auth-service:
+    build:
+      context: ../services/auth-service
+      dockerfile: Dockerfile
+    container_name: jat_auth
+    restart: unless-stopped
+    environment:
+      AUTH_PORT: ${AUTH_PORT:-8081}
+      AUTH_DB_URL: jdbc:mysql://mysql/auth_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      AUTH_DB_USERNAME: ${MYSQL_USER}
+      AUTH_DB_PASSWORD: ${MYSQL_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${AUTH_PORT:-8081}:8081"
+    networks:
+      - app-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # application-service
+  # ---------------------------------------------------------------------------
+  application-service:
+    build:
+      context: ../services/application-service
+      dockerfile: Dockerfile
+    container_name: jat_application
+    restart: unless-stopped
+    environment:
+      APP_PORT: ${APP_PORT:-8082}
+      APP_DB_URL: jdbc:mysql://mysql/application_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      APP_DB_USERNAME: ${MYSQL_USER}
+      APP_DB_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DASHBOARD_TTL_MINUTES: ${REDIS_DASHBOARD_TTL_MINUTES:-5}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${APP_PORT:-8082}:8082"
+    networks:
+      - app-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # notification-service
+  # ---------------------------------------------------------------------------
+  notification-service:
+    build:
+      context: ../services/notification-service
+      dockerfile: Dockerfile
+    container_name: jat_notification
+    restart: unless-stopped
+    environment:
+      NOTIF_PORT: ${NOTIF_PORT:-8083}
+      NOTIF_DB_URL: jdbc:mysql://mysql/notification_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      NOTIF_DB_USERNAME: ${MYSQL_USER}
+      NOTIF_DB_PASSWORD: ${MYSQL_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "${NOTIF_PORT:-8083}:8083"
+    networks:
+      - app-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # gateway-service — starts last; depends on all downstream services
+  # ---------------------------------------------------------------------------
+  gateway-service:
+    build:
+      context: ../services/gateway-service
+      dockerfile: Dockerfile
+    container_name: jat_gateway
+    restart: unless-stopped
+    environment:
+      GATEWAY_PORT: ${GATEWAY_PORT:-8080}
+      # Downstream URIs use Docker Compose service names as hostnames
+      AUTH_SERVICE_URI: http://auth-service:8081
+      APP_SERVICE_URI: http://application-service:8082
+      NOTIF_SERVICE_URI: http://notification-service:8083
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    networks:
+      - app-net
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      application-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+# -----------------------------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Network
+# -----------------------------------------------------------------------------
+networks:
+  app-net:
+    driver: bridge

@@ -1,0 +1,33 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in real values.
+# NEVER commit terraform.tfvars — add it to .gitignore.
+
+aws_region  = "us-east-1"
+environment = "staging"
+
+# VPC
+vpc_cidr = "10.0.0.0/16"
+
+# RDS
+rds_instance_class       = "db.t3.micro"
+rds_multi_az             = false
+rds_allocated_storage_gb = 20
+
+# ElastiCache
+elasticache_node_type = "cache.t3.micro"
+
+# Amazon MQ
+amazonmq_instance_type   = "mq.t3.micro"
+amazonmq_deployment_mode = "SINGLE_INSTANCE"
+
+# Secrets — replace all placeholder values
+mysql_root_password = "CHANGE_ME_ROOT_PASSWORD"
+mysql_app_password  = "CHANGE_ME_APP_PASSWORD"
+rabbitmq_password   = "CHANGE_ME_RABBIT_PASSWORD"
+jwt_secret          = "CHANGE_ME_JWT_SECRET_MIN_32_CHARS_LONG"
+
+# ACM — leave empty for HTTP-only (staging); set ARN for HTTPS (production)
+acm_certificate_arn = ""
+
+# CORS — set to your frontend domain in production
+cors_allowed_origin = "http://localhost:5173"

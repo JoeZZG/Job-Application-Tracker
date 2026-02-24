@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Documentation Index
+
+Per-directory CLAUDE.md files with implementation details, gotchas, and usage instructions:
+
+| Directory | CLAUDE.md | Description |
+|---|---|---|
+| `frontend/` | [frontend/CLAUDE.md](frontend/CLAUDE.md) | React 18 + TypeScript SPA: auth flow, React Query hooks, form validation, CloudFront path patterns |
+| `services/auth-service/` | [services/auth-service/CLAUDE.md](services/auth-service/CLAUDE.md) | JWT issuance, BCrypt, Spring Security FilterChain, Flyway schema |
+| `services/application-service/` | [services/application-service/CLAUDE.md](services/application-service/CLAUDE.md) | Core CRUD, Redis dashboard cache, RabbitMQ publisher, targeting notes |
+| `services/notification-service/` | [services/notification-service/CLAUDE.md](services/notification-service/CLAUDE.md) | RabbitMQ consumer, DLQ + retry policy, notification REST API |
+| `services/gateway-service/` | [services/gateway-service/CLAUDE.md](services/gateway-service/CLAUDE.md) | Spring Cloud Gateway routing, CORS, ECS Service Connect |
+| `infra/` | [infra/CLAUDE.md](infra/CLAUDE.md) | Docker Compose (local dev), environment variables, volume management |
+| `infra/terraform/` | [infra/terraform/CLAUDE.md](infra/terraform/CLAUDE.md) | AWS Terraform IaC: VPC, ECS, RDS, Redis, MQ, ALB, CloudFront, ECR, Secrets Manager |
+
 ## Project Overview
 
 Job Application Tracker + Resume Targeting Assistant — a hybrid-cloud full-stack microservices portfolio project. See `.claude/README.md` for the full feature spec, domain model, and API surface.

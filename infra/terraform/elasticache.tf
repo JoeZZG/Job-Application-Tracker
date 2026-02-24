@@ -1,0 +1,27 @@
+# ---------------------------------------------------------------------------
+# ElastiCache Redis 7 — application-service dashboard cache only
+# ---------------------------------------------------------------------------
+
+resource "aws_elasticache_subnet_group" "main" {
+  name       = "${local.name_prefix}-redis-subnet-group"
+  subnet_ids = aws_subnet.private[*].id
+  tags       = { Name = "${local.name_prefix}-redis-subnet-group" }
+}
+
+resource "aws_elasticache_cluster" "main" {
+  cluster_id           = "${local.name_prefix}-redis"
+  engine               = "redis"
+  engine_version       = "7.0"
+  node_type            = var.elasticache_node_type
+  num_cache_nodes      = 1
+  parameter_group_name = "default.redis7"
+  port                 = 6379
+
+  subnet_group_name  = aws_elasticache_subnet_group.main.name
+  security_group_ids = [aws_security_group.redis.id]
+
+  # Snapshots retained for 1 day; disabled in staging to save cost
+  snapshot_retention_limit = var.environment == "production" ? 1 : 0
+
+  tags = { Name = "${local.name_prefix}-redis" }
+}
