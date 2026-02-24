@@ -27,7 +27,10 @@ spring:
         cors-configurations:
           '[/**]':
             allowed-origins:
-              - "http://localhost:5173"
+              # CORS_ALLOWED_ORIGIN:
+              #   local dev:   http://localhost:5173
+              #   production:  https://<your-cloudfront-or-domain>
+              - "${CORS_ALLOWED_ORIGIN:http://localhost:5173}"
             allowed-methods:
               - GET
               - POST
@@ -46,22 +49,26 @@ spring:
       # Downstream services own their own path prefix handling.
       # ---------------------------------------------------------------------------
       routes:
+        # AUTH_SERVICE_URI:
+        #   local (bare process): http://localhost:8081
+        #   local (Docker):       http://auth-service:8081
+        #   AWS ECS:              http://auth-service:8081  (ECS Service Connect DNS)
         - id: auth-service
-          uri: http://localhost:${AUTH_PORT:8081}
+          uri: ${AUTH_SERVICE_URI:http://localhost:${AUTH_PORT:8081}}
           predicates:
             - Path=/auth/**
           filters:
             - StripPrefix=0
 
         - id: application-service
-          uri: http://localhost:${APP_PORT:8082}
+          uri: ${APP_SERVICE_URI:http://localhost:${APP_PORT:8082}}
           predicates:
             - Path=/applications/**
           filters:
             - StripPrefix=0
 
         - id: notification-service
-          uri: http://localhost:${NOTIF_PORT:8083}
+          uri: ${NOTIF_SERVICE_URI:http://localhost:${NOTIF_PORT:8083}}
           predicates:
             - Path=/notifications/**
           filters:

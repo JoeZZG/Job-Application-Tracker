@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useDashboard } from '../features/applications/useDashboard'
 import { ALL_STATUSES } from '../features/applications/types'
 import type { ApplicationStatus } from '../features/applications/types'
@@ -31,6 +31,7 @@ function formatDate(dateStr: string): string {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const { data, isLoading, isError, error } = useDashboard()
 
   if (isLoading) return <LoadingSpinner />
@@ -51,6 +52,21 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
         <p className="mt-1 text-sm text-gray-500">Your job search at a glance.</p>
       </div>
+
+      {data.total === 0 && (
+        <div className="rounded-xl border-2 border-dashed border-blue-200 bg-blue-50 px-6 py-10 text-center">
+          <p className="text-lg font-semibold text-blue-800">Welcome! You&apos;re all set.</p>
+          <p className="mt-2 text-sm text-blue-600">
+            Start tracking your job search by adding your first application.
+          </p>
+          <button
+            onClick={() => navigate('/applications/new')}
+            className="mt-4 inline-block rounded-md bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Add first application
+          </button>
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

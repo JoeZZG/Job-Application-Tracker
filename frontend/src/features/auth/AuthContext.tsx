@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { setOnUnauthorized } from '../../lib/apiClient'
 
 export interface User {
   id: number
@@ -22,8 +23,13 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
   const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('user')
-    return stored ? (JSON.parse(stored) as User) : null
+    try {
+      const stored = localStorage.getItem('user')
+      return stored ? (JSON.parse(stored) as User) : null
+    } catch {
+      localStorage.removeItem('user')
+      return null
+    }
   })
 
   function login(newToken: string, newUser: User) {
@@ -39,6 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null)
     setUser(null)
   }
+
+  useEffect(() => {
+    setOnUnauthorized(logout)
+  }, [])
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout }}>

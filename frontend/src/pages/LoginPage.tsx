@@ -26,6 +26,7 @@ export default function LoginPage() {
   } = useForm<FormData>({ resolver: zodResolver(schema) })
 
   async function onSubmit(data: FormData) {
+    setApiError(null)
     try {
       const res = await apiClient.post<AuthResponse>('/auth/login', data)
       login(res.data.token, res.data.user)
