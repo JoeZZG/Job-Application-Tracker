@@ -6,7 +6,7 @@ A full-stack microservices application for tracking job applications, managing r
 
 ## Live Demo
 
-**[https://d3tmito2x0icp5.cloudfront.net](https://d3tmito2x0icp5.cloudfront.net/login)**
+**[https://d3tmito2x0icp5.cloudfront.net/login](https://d3tmito2x0icp5.cloudfront.net/login)**
 
 Deployed on AWS: React SPA served from CloudFront + S3; four Spring Boot microservices running on ECS Fargate behind an Application Load Balancer; MySQL on RDS; Redis on ElastiCache; RabbitMQ on Amazon MQ.
 
