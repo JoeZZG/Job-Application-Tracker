@@ -10,7 +10,7 @@ improve readability) while keeping all existing tests green.
 ## Input (provide in prompt)
 
 - File path and method/class to refactor
-- Single refactor goal (extract method / remove duplication / improve naming / split class / etc.)
+- A single refactor goal (extract method / remove duplication / improve naming / split class / etc.)
 - What must NOT change (method signatures, exception types, public API, other files)
 - Verification: which test(s) must still pass after the change
 
