@@ -18,6 +18,10 @@ public class DeadlineEventConsumer {
     @RabbitListener(queues = "${app.rabbitmq.queue.deadline}")
     @Transactional
     public void handleDeadlineEvent(DeadlineEventPayload payload) {
+        notificationRepository.save(buildNotification(payload));
+    }
+    
+    private Notification buildNotification(DeadlineEventPayload payload) {
         Notification notification = new Notification();
         notification.setUserId(payload.userId());
         notification.setType("DEADLINE_REMINDER");
@@ -26,6 +30,6 @@ public class DeadlineEventConsumer {
                 + " at " + payload.company()
                 + " has a deadline on " + payload.deadline() + ".");
         notification.setRead(false);
-        notificationRepository.save(notification);
+        return notification;
     }
 }
