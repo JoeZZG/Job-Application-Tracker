@@ -364,7 +364,7 @@ void getById_differentOwner_throwsForbiddenException() {
 AI 最初写出的版本把消息处理和通知对象构建混在同一个方法体里：
 
 ```java
-// 重构前（AI 初版，当前文件现状）
+// 重构前
 @RabbitListener(queues = "${app.rabbitmq.queue.deadline}")
 @Transactional
 public void handleDeadlineEvent(DeadlineEventPayload payload) {
