@@ -190,12 +190,12 @@ browser
 **验收标准（最终确定）：**
 
 ```
-✅ 用户可以注册/登录/登出
-✅ 可以创建、查看、编辑、删除求职申请
-✅ 可以为每条申请添加简历定制笔记
-✅ 创建含截止日期的申请后，notification-service 能收到 RabbitMQ 事件并生成通知记录
-✅ Dashboard 展示聚合数据，Redis 缓存有效
-✅ 整个链路在 AWS 上可访问（CloudFront URL 能正常使用）
+1. 用户可以注册/登录/登出
+2. 可以创建、查看、编辑、删除求职申请
+3. 可以为每条申请添加简历定制笔记
+4. 创建含截止日期的申请后，notification-service 能收到 RabbitMQ 事件并生成通知记录
+5. Dashboard 展示聚合数据，Redis 缓存有效
+6. 整个链路在 AWS 上可访问（CloudFront URL 能正常使用）
 ```
 
 ### 2.3 任务拆分与迭代（Iteration）
