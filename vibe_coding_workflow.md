@@ -453,7 +453,7 @@ private JobApplication loadAndVerifyOwnership(Long userId, Long id) {
 // getById_differentOwner_throwsForbiddenException  — 验证 403 路径
 ```
 
-这两个 case 在重构前后都能通过，证明提取没有改变行为。
+这两个 cases 在重构前后都能通过，证明提取没有改变行为。
 
 > **关键点**：prompt 里写 `remove duplicate` 而不是"优化一下"——明确告诉 AI 目标是消除重复，AI 就不会顺手增加功能或改变接口。验收条件永远是"测试通过"，不是"看起来更好"。
 
