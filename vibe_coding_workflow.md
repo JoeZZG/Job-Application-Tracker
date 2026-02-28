@@ -359,68 +359,103 @@ void getById_differentOwner_throwsForbiddenException() {
 
 **JAT 项目案例：**
 
-文件：`services/notification-service/src/main/java/com/jobtracker/notification/messaging/DeadlineEventConsumer.java`
+文件：`services/application-service/src/main/java/com/jobtracker/application/service/ApplicationService.java`
 
-AI 最初写出的版本把消息处理和通知对象构建混在同一个方法体里：
+AI 最初写出的版本里，`getById`、`update`、`delete` 三个方法各自内联了一套相同的"查记录 + 校验归属"逻辑：
 
 ```java
 // 重构前
-@RabbitListener(queues = "${app.rabbitmq.queue.deadline}")
+public ApplicationResponse getById(Long userId, Long id) {
+    JobApplication app = applicationRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+    if (!app.getUserId().equals(userId)) {
+        throw new ForbiddenException("You do not own this application");
+    }
+    return toResponse(app);
+}
+
 @Transactional
-public void handleDeadlineEvent(DeadlineEventPayload payload) {
-    Notification notification = new Notification();
-    notification.setUserId(payload.userId());
-    notification.setType("DEADLINE_REMINDER");
-    notification.setTitle("Deadline approaching: " + payload.company());
-    notification.setMessage("Your application for " + payload.jobTitle()
-            + " at " + payload.company()
-            + " has a deadline on " + payload.deadline() + ".");
-    notification.setRead(false);
-    notificationRepository.save(notification);
+@CacheEvict(cacheNames = CacheNames.DASHBOARD_SUMMARY, key = "#userId")
+public ApplicationResponse update(Long userId, Long id, UpdateApplicationRequest req) {
+    JobApplication app = applicationRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+    if (!app.getUserId().equals(userId)) {
+        throw new ForbiddenException("You do not own this application");
+    }
+    // ... 字段更新逻辑
+    return toResponse(applicationRepository.save(app));
+}
+
+@Transactional
+@CacheEvict(cacheNames = CacheNames.DASHBOARD_SUMMARY, key = "#userId")
+public void delete(Long userId, Long id) {
+    JobApplication app = applicationRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+    if (!app.getUserId().equals(userId)) {
+        throw new ForbiddenException("You do not own this application");
+    }
+    applicationRepository.delete(app);
 }
 ```
 
-问题：`handleDeadlineEvent` 同时负责"决定做什么"和"怎么构建对象"两件事，违反单一职责原则。如果以后消息格式变了，或者 `Notification` 字段增加，修改点都堆在这一个方法里，可读性差，也更容易引入回归。
+问题：同一个"查找 + 权限校验"的四行代码出现了三次。如果异常消息要改、或者权限校验逻辑要扩展（例如加管理员 bypass），就必须同步修改三个地方，漏改一处就会行为不一致。
 
-重构目标：**只提取一个私有方法，不改任何业务逻辑**。
+重构目标：**只消除重复，不改任何业务逻辑**。
 
 使用 `/refactor` command，Prompt：
 ```
-文件：DeadlineEventConsumer.java
-目标：只做一件事 — 把 Notification 对象的构建逻辑提取为私有方法 buildNotification(DeadlineEventPayload)
+文件：ApplicationService.java
+目标：remove duplicate — getById、update、delete 三个方法里有相同的
+      "findById + 权限校验"代码块，提取为私有方法 loadAndVerifyOwnership(Long userId, Long id)
 约束：
-  - 不改 handleDeadlineEvent 的方法签名
-  - 不改任何字段赋值逻辑，只是搬移代码
+  - 不改三个方法的对外签名和注解
+  - 不改任何权限校验逻辑，只是搬移代码
   - 不要"顺便"修改其他地方
-验收：DeadlineEventConsumerTest 全部通过
+验收：ApplicationServiceTest 全部通过
 ```
 
 重构后：
 
 ```java
-// 重构后
-@RabbitListener(queues = "${app.rabbitmq.queue.deadline}")
-@Transactional
-public void handleDeadlineEvent(DeadlineEventPayload payload) {
-    notificationRepository.save(buildNotification(payload));
+// 重构后（当前文件实际状态）
+public ApplicationResponse getById(Long userId, Long id) {
+    return toResponse(loadAndVerifyOwnership(userId, id));
 }
 
-private Notification buildNotification(DeadlineEventPayload payload) {
-    Notification notification = new Notification();
-    notification.setUserId(payload.userId());
-    notification.setType("DEADLINE_REMINDER");
-    notification.setTitle("Deadline approaching: " + payload.company());
-    notification.setMessage("Your application for " + payload.jobTitle()
-            + " at " + payload.company()
-            + " has a deadline on " + payload.deadline() + ".");
-    notification.setRead(false);
-    return notification;
+@Transactional
+@CacheEvict(cacheNames = CacheNames.DASHBOARD_SUMMARY, key = "#userId")
+public ApplicationResponse update(Long userId, Long id, UpdateApplicationRequest req) {
+    JobApplication app = loadAndVerifyOwnership(userId, id);
+    // ... 字段更新逻辑
+    return toResponse(applicationRepository.save(app));
+}
+
+@Transactional
+@CacheEvict(cacheNames = CacheNames.DASHBOARD_SUMMARY, key = "#userId")
+public void delete(Long userId, Long id) {
+    applicationRepository.delete(loadAndVerifyOwnership(userId, id));
+}
+
+private JobApplication loadAndVerifyOwnership(Long userId, Long id) {
+    JobApplication app = applicationRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Application not found"));
+    if (!app.getUserId().equals(userId)) {
+        throw new ForbiddenException("You do not own this application");
+    }
+    return app;
 }
 ```
 
-`DeadlineEventConsumerTest` 原有 case 全部通过（行为未变）→ 可以 merge。
+`ApplicationServiceTest` 原有 case 全部通过（行为未变）→ 可以 merge。测试里专门覆盖了这段逻辑的两个分支：
 
-> **关键点**：重构 prompt 要明确"只做一件事"、写清楚验收条件是"测试通过"。不能写"优化一下这个类"——AI 会顺手改很多不该改的地方。
+```java
+// getById_notFound_throwsResourceNotFoundException — 验证 404 路径
+// getById_differentOwner_throwsForbiddenException  — 验证 403 路径
+```
+
+这两个 case 在重构前后都能通过，证明提取没有改变行为。
+
+> **关键点**：prompt 里写 `remove duplicate` 而不是"优化一下"——明确告诉 AI 目标是消除重复，AI 就不会顺手增加功能或改变接口。验收条件永远是"测试通过"，不是"看起来更好"。
 
 ### 2.8 PR Review 与合并
 
@@ -459,21 +494,83 @@ CLAUDE.md 是 AI 的"永久记忆"——每次对话都会读取，用来约束 
 
 ## 3. Vibe Coding 的副作用
 
+AI 辅助编码的核心价值是加速产出，但"加速"本身也会放大某些固有问题。本节梳理最常见的七类副作用，以及如何识别和防御。
+
 ### 3.1 重复冗余代码
+
+AI 在生成代码时缺乏对整个代码库的全局视野。每一次 prompt 对它来说是一个相对独立的上下文窗口，因此它很容易在不同文件或不同函数中写出语义相同、结构几乎一致的代码，而不知道已有可复用的实现。
+
+**JAT 项目案例**：`ApplicationService` 的 `getById`、`update`、`delete` 三个方法，AI 最初在每个方法里各自内联了一套相同的"查记录 + 校验归属"逻辑（详见 2.7 节重构案例）。功能正确，但同一块四行代码出现了三次。一旦权限校验逻辑需要扩展，必须同步修改三处，漏改任意一处就会造成行为不一致。最终通过 refactor 提取成 `loadAndVerifyOwnership()` 私有方法消除了重复。
+
+重复代码的危害不只是"代码量变多"——更重要的是，它把一个本应只在一处做的决策分散到了多处，使每次修改都需要保持多处同步。
+
+**防御方法**：在 CLAUDE.md 里维护已有工具/配置清单，并在 prompt 里明确要求："如果发现已有类似实现，优先复用，不要新建"。
 
 ### 3.2 不遵守项目代码规范
 
+AI 的训练数据来自互联网上各种风格的代码，在没有约束的情况下，它会自动套用它认为"合理"的通用写法，而不是项目规定的写法。这是最容易被忽视、也最容易累积技术债的一类副作用。
+
+**典型反例 —— TypeScript 中滥用 `any`**：前端规范明确禁止 `any`，所有 props 和 API response 必须有明确类型定义。但 AI 在处理复杂嵌套的 API 响应时，往往直接写 `const data: any = response.data`——类型安全从此形同虚设，TypeScript 编译器的保护完全失效，下游所有属性访问都变成运行时风险，且 IDE 无法提供任何补全或错误提示。
+
+**防御方法**：在 CLAUDE.md 里把规范写成**明确的禁止项**（如"不得使用 `any`"），而不是只写"应该怎么做"。AI 对明确的 constraint 比对隐含的 convention 服从得更好。
+
 ### 3.3 接口设计随意（乱编 API）
+
+AI 在实现一个功能时，如果接口文档或 DTO 定义不完整，它会根据"合理猜测"自行发明字段名、路径和请求格式。这些发明往往逻辑上说得通，但与前后端其他地方的约定不一致，只在集成时才暴露出不匹配。
+
+**场景 1**：假设让 AI 给通知服务实现"标记通知已读"接口，但 prompt 里没有指定路径和字段名。AI 可能生成 `PATCH /notifications/{id}/read`，body 为 `{ "isRead": true }`；但前端按另一套理解实现了 `PUT /notifications/{id}/markRead`，body 为 `{ "read": true }`。两套约定哪个都不算错，但只要有一方先上线，另一方就必须返工。
+
+**场景 2**：分页参数约定冲突。JAT 后端使用 Spring Data 的 Pageable 约定（`page=0&size=10`，0-indexed）。但 AI 有时自行使用 `pageNum=1&pageSize=10`（1-indexed），前端调用时语义不一致，第一页数据可能被跳过，且不报任何错误。
+
+**防御方法**：在进入实现 iteration 之前，先通过 `system-architect` agent 确定 API contract（路径、HTTP 方法、request/response 字段名），写入 CLAUDE.md 或 prompt，并明确要求"不得自行发明字段名或路径"。
 
 ### 3.4 过度设计与不必要抽象
 
+AI 有时会把一个简单的问题设计得过于复杂，引入当前并不需要的抽象层和扩展点。这源于它的训练数据里充斥着大量"为可扩展性而设计"的示例代码——它会模仿这种风格，即使当前规模根本不需要。
+
+结果是：代码能跑，但改一个功能需要同时理解三四个类之间的关系，维护成本反而高于直接写的简单版本。
+
+**防御方法**：在 prompt 里明确 **YAGNI（You Aren't Gonna Need It）原则**："只实现当前需求，不为假设的未来扩展预留接口"。review 时重点检查有没有只用了一次的抽象、没有实现类的接口、或者为了"可扩展"引入的空 base class。
+
 ### 3.5 测试"作弊"（刷数量不保质量）
+
+AI 写的测试在 CI 里全部通过，覆盖率报告也很好看，但很多测试并没有真正在验证业务逻辑——它们在用各种方式"作弊"。这是最难从表面上发现的副作用。
+
+**常见作弊模式**：
+
+- **只验证 mock 本身**：mock 了 repository 的 `findById`，然后 assert service 返回了 mock 返回的值。这只证明了 mock 配置正确，对 service 内部逻辑没有任何验证。
+- **assertion 永远为 true**：`assertNotNull(result)` 这类断言，只要代码不抛出异常就能通过，完全没有验证返回内容是否正确。
+- **只测 happy path，不测关键分支**：测试了"申请存在时返回申请"，但没有测试"申请不存在时抛出 `ResourceNotFoundException`"或"归属人不匹配时抛出 `ForbiddenException`"——而这些边界路径往往才是真正容易出 bug 的地方。
+
+对比来看，JAT 项目中真正有价值的测试案例（见 2.6 节）明确验证了：`deadline` 为 null 时不发 RabbitMQ 事件、不同用户访问他人申请时抛出 `ForbiddenException`——这些都是业务上有实际意义的分支。
+
+**防御方法**：测试 prompt 里明确列出"核心业务逻辑是什么"、"哪些是边界条件"、"哪些分支容易出 bug"，以及"哪些 case 不需要写"。不要笼统说"帮我写完所有测试"——AI 会用数量填满覆盖率，而不是用质量覆盖风险。人工审查测试的 checklist 见第 6 节。
 
 ### 3.6 配置不规范、密钥泄露风险
 
+**配置不规范**：AI 生成配置时，倾向于先让程序能跑起来，因此容易把值直接写死，而不是通过环境变量注入。这导致同一份代码无法在不同环境之间灵活切换，也无法在不改代码的情况下调整行为。JAT 规范要求：所有外部 host/port/credential 配置必须是环境变量驱动，production profile 里不得有指向 localhost 的硬编码默认值。
+
+**密钥泄露风险**：这是后果最严重的一类。AI 的训练数据里充斥着教程和示例代码，这类代码经常直接把凭证写在配置文件里。如果 prompt 里没有明确"凭证必须从环境变量读取"，AI 很可能照着这个习惯生成配置。一旦 commit 进 git，密码就进入 history，之后即使删除文件，history 里仍然存在，所有相关凭证都必须 rotate。
+
+**防御方法**：在 CLAUDE.md 里明确规定"secrets 只能通过 AWS Secrets Manager 注入，`.env.example` 里只能有占位符，绝不提交真实值"；AI 每次生成配置文件后人工检查是否含有硬编码凭证。
+
 ### 3.7 错误处理不完整
 
+AI 实现 happy path 很顺手，但错误处理往往是敷衍的：要么只捕获最宽泛的 `Exception`，要么在 catch 块里只打一行 log 就把异常吞掉，要么返回的 HTTP status code 不准确（比如业务校验失败返回 500 而不是 422）。
+
+JAT 项目通过 `@RestControllerAdvice` 全局统一处理异常，规定了固定的错误响应格式：`{ status, error, message, timestamp, path }`。如果 AI 在某个 controller 里绕过这个全局处理器、自己 try-catch 并返回不一样的格式，前端的错误处理代码就必须应对两套格式，且这种不一致性很难被测试捕获——只有在错误路径被真正触发时才会暴露。
+
+**防御方法**：在 prompt 里明确"所有异常必须通过全局 `@RestControllerAdvice` 处理，不得在 controller 层自行 try-catch 并返回自定义格式"。code review checklist 里专设一栏检查错误路径的处理方式。
+
 ### 3.8 真实案例：CloudFront 路径匹配 Bug
+
+以上各类副作用中，"配置不规范"叠加"agent 上下文缺失"的实际破坏力，本项目有一个完整的真实案例（详见 2.5 节）。
+
+简要回顾：`aws-deploy.md` 这个 agent 里遗漏了 CloudFront path pattern 规范，AI 自由发挥，把 `/notifications*` 写成了 `/notifications/*`。这一个字符的差异导致 `GET /notifications` 请求无法被路由到 ALB，前端 dashboard 完全白屏，而全程 axios 返回 200，没有任何报错信号。
+
+这个案例综合体现了本节讨论的几类副作用：**配置不规范**（path pattern 语义错误）+ **agent 上下文缺失时 AI 自由发挥**（没有 CloudFront 规范的约束）+ **错误无声无息**（HTTP 200 掩盖了真正的路由错误）。
+
+事后处理：最直接的修复是把 CloudFront path pattern 规范补进了 `aws-deploy.md`（这个 agent 本来就是负责 AWS 基础设施的，规范缺失在这里），同时也同步到了根 `CLAUDE.md` 和 `infra/terraform/CLAUDE.md`；前端补充了 `Array.isArray()` 防御，避免非预期响应格式引发白屏。**踩坑之后立刻更新相关 agent 文件和 CLAUDE.md，是防止同类错误再次发生的唯一可靠方式。**
 
 ---
 
