@@ -576,33 +576,230 @@ JAT 项目通过 `@RestControllerAdvice` 全局统一处理异常，规定了固
 
 ## 4. 程序员的职责
 
+Vibe Coding 改变了程序员写代码的方式，但没有改变程序员对代码负责的方式。AI 负责写来加速产出，程序员负责判断写的东西对不对、能不能维护、能不能上线。这两件事不能混淆。
+
 ### 4.1 理解与拆解需求
+
+需求理解是程序员最核心的职责之一，AI 无法替代。AI 可以根据描述生成代码，但它不能判断这个需求本身是否合理、是否完整、是否和其他功能冲突。
+
+程序员在开始一个功能之前需要能回答：这个功能要解决什么问题？不需要解决什么问题？成功的验收标准是什么？哪些是当前 iteration 的范围，哪些推迟？这些问题的答案不能交给 AI 来定——AI 会给出答案，但那个答案是它推测的，不是经过业务判断的。
+
+需求拆分也是人的工作。把一个大功能拆成可以独立实现和验证的小任务，设定每个 iteration 的边界，这需要对系统整体的理解。AI 可以辅助列出任务列表，但优先级、边界、依赖顺序需要人来决定。
 
 ### 4.2 架构与接口设计（人决策，AI 不能替代）
 
+架构决策的影响往往是长期的、难以逆转的。服务边界怎么划、数据归谁所有、同步还是异步、哪些需要缓存——这些决策一旦进入生产，改动成本极高。AI 可以提供方案选项和利弊分析，但最终拍板的必须是程序员，因为 AI 不了解你的团队能力、运维成本、业务增长预期。
+
+接口设计同理。API 的路径、方法、请求响应字段一旦对外暴露，修改就意味着 breaking change。AI 可以生成接口草稿，但字段语义、命名风格、版本策略需要人来审定，不能让 AI 自由发挥然后两端各自实现。
+
+一个实用原则：**凡是"这样设计的原因"说不清楚的地方，就不应该让 AI 来决定**。
+
 ### 4.3 制定并维护代码规范
+
+AI 没有项目规范意识，它只有训练数据里的通用写法。如果不告诉它"在这个项目里应该怎么做"，它会自己选一种，而那种选择不一定符合你的要求。
+
+制定代码规范是程序员的工作：用哪个 HTTP 客户端、如何处理异常、如何组织包结构、哪些写法被明确禁止。制定之后，规范需要以明确、可检索的形式写进 CLAUDE.md，不能只停留在口头约定。
+
+规范也需要维护。每次发现 AI 重复犯同一类错误，就说明那条规范没有被明确记录，或者记录的位置 AI 读不到。踩坑之后更新 CLAUDE.md，让这次错误成为未来的约束，是规范维护的核心动作。
 
 ### 4.4 监督 AI 输出
 
+AI 生成的代码必须被审查，不能默认是对的。"能跑"不等于"正确"，"测试通过"不等于"逻辑对"，"没有报错"不等于"配置正确"。
+
+有几类输出需要特别谨慎：
+
+- **修改已有代码**：AI 在修改老代码时，容易在解决目标问题的同时，顺手改动周边不相关的逻辑。每次修改都要确认改动范围和意图是否一致。
+- **生成测试**：AI 生成的测试数量可以很多，但质量参差不齐。见 3.5 节，人需要逐一判断每个测试是否真正在验证有意义的逻辑。
+- **生成配置**：配置错误往往不报错，只是行为不对，且很难定位根因。基础设施相关的配置（路由规则、环境变量注入、权限策略）需要人逐行审查，不能只看"能部署"。
+
 ### 4.5 代码审查
+
+AI 可以做初步的 code review（见第 7 节），但最终审查必须由人完成。
+
+人工审查的重点不是逐行检查语法，而是判断：
+
+- **业务逻辑是否正确**：AI 不理解业务上下文，它只能根据 prompt 推断。如果 prompt 描述不够准确，生成的逻辑可能在技术上正确，但在业务上是错的。
+- **有没有超出范围**：AI 有时会"顺便"实现 prompt 里没有要求的功能，或者重构了本来没让它动的代码。这些额外改动需要被识别和还原。
+- **代码是否可维护**：逻辑正确但难以维护的代码，日后改动成本极高。审查时需要判断：三个月后看这段代码，能不能快速理解它在做什么、为什么这样做。
 
 ### 4.6 重构判断
 
+重构的决策权在人，不在 AI。什么时候重构、重构的目标是什么、重构的范围有多大——这些需要程序员来判断，因为 AI 无法评估重构对整体可维护性的影响，也无法判断当前的复杂度是否真的构成问题。
+
+"让 AI 帮我优化一下"这类宽泛指令会导致 AI 同时改动多处，且很难验证每一处改动的合理性。正确的做法是：先由人确定一个明确的重构目标（去重、拆函数、改命名），再让 AI 只做这一件事，最后用测试证明行为没有变化。见 2.7 节的具体做法。
+
 ### 4.7 安全与权限决策
+
+安全和权限相关的决策不能委托给 AI。哪些接口需要认证、哪些操作需要鉴权、哪些数据不能泄露给前端——这些判断需要人来做，因为安全漏洞的后果往往是严重的，而 AI 在这方面没有风险意识，只有功能意识。
+
+具体来说：
+
+- **认证与鉴权**：AI 可以实现给定的认证逻辑，但"哪个 endpoint 需要认证"、"什么角色能访问什么资源"需要人来规定，不能让 AI 自己判断。
+- **敏感数据**：AI 不知道哪些字段是敏感的。response DTO 里包不包含某个字段，需要人审查，而不是默认信任 AI 的选择。
+- **凭证管理**：见 3.6 节，AI 生成的配置需要人检查是否有硬编码凭证，这一步不能省略。
 
 ---
 
 ## 5. 提前设计：让 AI 有规则可循
 
+AI 写代码的质量上限，取决于给它的上下文质量。上下文越模糊，AI 的自由发挥空间越大，副作用（见第 3 节）就越多。本节讨论如何在开始写代码之前，把"规则"以 AI 能读懂的形式写清楚。
+
 ### 5.1 接口设计文档（名称、类型、用法示例）
+
+在前后端各自实现之前，需要先确定 API contract：路径、HTTP 方法、request/response 字段名和类型。这份 contract 不需要是正式的 OpenAPI 文档，但必须明确到字段级别——字段名、类型、是否必填、枚举值范围。
+
+**为什么要写到字段级别**：AI 在实现前端 hook 和后端 controller 时，如果没有字段级别的约定，会各自推断字段名。两边的推断很可能不一样（比如 `jobTitle` vs `job_title`，`isRead` vs `read`），而且这种不一致要到联调时才会暴露。
+
+**写在哪里**：最直接的方式是先写 DTO 和 TypeScript interface，再实现业务逻辑——代码本身就是最精确的 contract 文档，不会有解读歧义，也不会和实现脱节。如果是跨服务的 contract（如 RabbitMQ payload schema），则应写进 CLAUDE.md 的 Implementation Overview，让双方服务的 AI 都能读到同一份约定。
 
 ### 5.2 代码风格规范（Linting、格式化）
 
-### 5.3 项目强制要求（例：ORM 必须用 Spring Data JPA，禁止 local imports）
+代码风格规范的作用不只是"好看"——它是让 AI 生成的代码和已有代码保持一致的最底层保障。如果没有机器可验证的规范，AI 每次生成的缩进风格、引号偏好、类型严格度都可能不同，积累下来代码库的一致性会越来越差。
+
+**原则**：规范要机器可验证，不能只靠"口头约定"。JAT 项目前端的 `tsconfig.json` 开启了 `strict: true`，TypeScript 编译器会强制拒绝 `any`、隐式 `null`、未处理的 union 分支等常见问题。CI 的构建步骤（`npm run build`）会运行 `tsc`，类型错误直接导致构建失败——不需要额外的 lint 工具，类型系统本身就是规范的执行者。
+
+**和 AI 的关系**：AI 会尝试遵守已有的类型定义，但它不会主动去查 tsconfig 的配置。把关键约束写进 CLAUDE.md（比如"不得使用 `any`，用 `unknown` + type narrowing"），AI 才会在生成代码时把这条规则纳入考虑。最终保障仍然是编译器——AI 写了 `any`，`tsc` 在 strict 模式下会报错，CI 会拦住。
+
+### 5.3 项目强制要求
+
+这是 CLAUDE.md 里最重要的内容之一：哪些技术必须用、哪些不能用、哪些写法被明确禁止。这些规则越具体，AI 的行为就越可预测。
+
+**JAT 项目的固定技术栈**（来自根 `CLAUDE.md`）：
+
+| 层次 | 强制使用 |
+|---|---|
+| 前端 HTTP | 只能用 `src/lib/apiClient.ts`（Axios singleton），禁止裸 `fetch` 或新建 `axios` 实例 |
+| 前端状态 | React Query 管理服务端状态，禁止在组件里直接调 API |
+| 后端序列化 | `Jackson2JsonMessageConverter`，RabbitMQ 消息必须是 JSON |
+| 后端 ORM | Spring Data JPA，禁止裸 JDBC |
+| 数据库变更 | Flyway migration，禁止 `ddl-auto: create` 或 `update` |
+| 缓存 | Redis 只在 application-service 使用，其他服务禁止引入缓存 |
+
+**禁止项同样重要**：只写"应该用什么"不够，还要写"不得用什么"。`backend-spring.md` agent 里的明确禁止项包括：
+
+```
+- Never expose JPA entities in API responses — always use explicit DTOs
+- Constructor injection only — no @Autowired field injection
+- Never let persistence exceptions bubble raw — wrap in domain exceptions
+```
+
+禁止项的价值在于：AI 在没有约束时会选择它认为"合理"的写法，而那个写法不一定是项目规定的写法。明确的禁止项把这个自由度直接封掉。
 
 ### 5.4 CLAUDE.md 的结构与写法
 
+CLAUDE.md 是 AI 的"项目记忆"——每次对话都会读取，用来约束 AI 在整个会话里的行为。它不是一次性的 prompt，而是持久生效的上下文。
+
+**项目层级结构**：JAT 项目有两层 CLAUDE.md：
+
+```
+/CLAUDE.md                              ← 全局：技术栈、架构规则、服务边界、禁止项
+/frontend/CLAUDE.md                     ← 前端：auth flow、React Query、Axios 规范
+/services/application-service/CLAUDE.md ← service 级：CRUD、Redis 缓存、RabbitMQ
+/services/notification-service/CLAUDE.md
+/services/auth-service/CLAUDE.md
+/services/gateway-service/CLAUDE.md
+/infra/terraform/CLAUDE.md              ← 基础设施：CloudFront 规范、ECS 配置
+```
+
+全局 CLAUDE.md 写架构规则和跨服务约定；每个子目录的 CLAUDE.md 写该模块的具体实现细节、已知坑和禁忌。AI 在某个子目录下工作时，会同时读取全局和子目录的 CLAUDE.md，形成叠加的上下文。
+
+**一份有效的 CLAUDE.md 应包含以下内容**，以 `services/application-service/CLAUDE.md` 的真实内容为例：
+
+`Purpose` — 一句话说清楚这个模块是什么、管什么数据、依赖哪些外部服务：
+
+```
+Spring Boot 3.2.1 service that owns the core domain: JobApplication and
+ResumeTargetingNote entities. Provides full CRUD, dashboard summary
+(Redis-cached), and publishes deadline events to RabbitMQ for async
+notification delivery.
+Port: 8082 / DB: application_db / Cache: Redis / Messaging: RabbitMQ publisher
+```
+
+`Key Files` — 列出关键文件和它们的职责，让 AI 知道"需要改什么功能去找哪个文件"：
+
+```
+| controller/ApplicationController.java | All REST endpoints: CRUD, dashboard, targeting notes |
+| service/ApplicationService.java       | CRUD logic; publishes deadline event on create/update |
+| config/RedisConfig.java               | RedisCacheManager with TTL from REDIS_DASHBOARD_TTL_MINUTES |
+| config/RabbitMQConfig.java            | TopicExchange bean, RabbitTemplate, Jackson2JsonMessageConverter |
+| exception/GlobalExceptionHandler.java | @RestControllerAdvice, consistent error body |
+```
+
+`Implementation Details & Gotchas` — 这是最重要的部分，专门记录 AI 容易踩的坑：
+
+```
+- @Cacheable requires a proxy call: calling a @Cacheable method from within
+  the same class bypasses the cache proxy. Always call DashboardService
+  from ApplicationController, not from within ApplicationService.
+- ddl-auto: validate — Hibernate never modifies schema. New columns require
+  a new Flyway migration.
+- ResumeTargetingNote FK cascade: deleting a JobApplication automatically
+  deletes its note via DB cascade. No service-layer cleanup needed.
+```
+
+`Related` — 指向依赖的其他模块，让 AI 在需要时知道去哪里看上下文：
+
+```
+- services/notification-service/ — consumes events published by this service
+- infra/terraform/elasticache.tf — Redis cluster for dashboard cache
+- infra/terraform/amazonmq.tf   — RabbitMQ broker
+```
+
+**什么时候更新 CLAUDE.md**：每次踩了一个 AI 容易犯的坑，或引入了新的技术约束，都要立刻更新。CLAUDE.md 不是项目初期写好就不动的文档，而是随项目演进持续维护的"活文档"。
+
 ### 5.5 Agent / Command 模板结构
+
+Agent 和 command 是让 AI 以特定角色和固定流程工作的机制，两者解决不同的问题：
+
+- **Agent**：定义 AI 的身份、专业范围和行为边界。用于需要领域专业知识的场景，比如"以 Spring Boot 工程师的视角实现这个接口"。
+- **Command**：定义一个可重复执行的工作流步骤。用于有固定输入输出格式的重复性任务，比如"实现一个端点"、"做 PR review"。
+
+**Agent 模板**（来自项目真实的 `backend-spring.md`）：
+
+```markdown
+---
+name: backend-spring
+description: Use for Spring Boot backend work: controllers, services, repositories...
+model: sonnet
+---
+
+You are a senior Spring Boot engineer. [角色定义]
+
+## Core Standards          ← 技术约束（必须用什么，禁止用什么）
+## Layer Responsibilities  ← 各层职责边界
+## Integration Patterns    ← RabbitMQ、Redis、JWT 的写法规范
+## Output Requirements     ← 每次输出必须包含什么
+```
+
+关键是 `Output Requirements` 部分——它规定了 AI 每次必须交付什么，防止 AI 只写 service 层忘了写 controller 或 DTO。
+
+**Command 模板**（来自项目真实的 `implement-endpoint.md`）：
+
+```markdown
+## Goal
+[这个 command 要完成的事]
+
+## Input（调用时需要提供）
+- Service name
+- Endpoint path + method
+- Request fields / Response fields
+- Auth requirement
+- 副作用（缓存、事件）
+
+## Output format
+1. Request DTO / Response DTO
+2. Controller changes
+3. Service-layer logic
+4. Error cases and status codes
+5. Tests to add
+6. Sample request/response JSON
+
+## Rules
+- Do not expose entities directly as API responses
+- Be explicit about authorization checks
+```
+
+Command 的核心价值在于 **Input + Output format**：每次调用这个 command，AI 知道需要什么信息（Input），也知道必须输出什么（Output format），而不是每次靠临时 prompt 来规定。重复的工作流只需要写一次 command，之后调用时只填 Input 里的变量部分即可。
 
 ---
 
